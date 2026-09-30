@@ -23,6 +23,8 @@ A native macOS app for encrypted LAN file sharing. Pair once with a shared passw
 
 相同密码的设备都属于同一配对组。只有两台 Mac 时自动选择对方；多台设备时可以在设备列表中选定接收端。更换配对组可以使用「重新配对」。
 
+完成或失败的传输记录可以点击垃圾桶图标单条删除，也可以点击「清空已结束记录」批量清理。只移除记录，接收的文件会保留；等待发送或正在传输的任务不会被清空。
+
 <details>
 <summary>查看首次配对界面</summary>
 

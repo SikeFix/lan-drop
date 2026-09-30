@@ -267,6 +267,13 @@ private struct TransferDashboard: View {
                             .background(Palette.line.opacity(0.55), in: Capsule())
                     }
                     Spacer()
+                    Button("清空已结束记录", action: model.clearFinishedTransferRecords)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(model.hasFinishedTransferRecords ? Palette.muted : Palette.muted.opacity(0.45))
+                        .buttonStyle(.plain)
+                        .disabled(!model.hasFinishedTransferRecords)
+                        .help("仅清空已完成或失败的记录，接收的文件会保留。")
+                        .padding(.trailing, 10)
                     Button(action: model.revealDownloads) {
                         Label("接收文件夹", systemImage: "folder")
                             .font(.system(size: 11, weight: .medium))
@@ -292,7 +299,9 @@ private struct TransferDashboard: View {
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(model.transfers) { transfer in
-                                TransferRow(transfer: transfer)
+                                TransferRow(transfer: transfer) {
+                                    model.removeTransferRecord(id: transfer.id)
+                                }
                             }
                         }
                         .padding(.bottom, 2)
@@ -485,8 +494,10 @@ private struct TransferDashboard: View {
 
 private struct TransferRow: View {
     let transfer: TransferItem
+    let onDelete: () -> Void
 
     private var isSending: Bool { transfer.direction == .sending }
+    private var canDelete: Bool { transfer.state == .completed || transfer.state == .failed }
     private var fraction: Double { transfer.fraction.isFinite ? min(max(transfer.fraction, 0), 1) : 0 }
     private var stateColor: Color {
         switch transfer.state {
@@ -548,6 +559,16 @@ private struct TransferRow: View {
                         .buttonStyle(.plain)
                         .help("在 Finder 中显示")
                     }
+                    if canDelete {
+                        Button(action: onDelete) {
+                            Image(systemName: "trash")
+                                .foregroundStyle(Palette.muted)
+                                .frame(width: 18, height: 18)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("删除传输记录")
+                        .help("删除这条记录，接收的文件会保留。")
+                    }
                 }
                 .font(.system(size: 10))
                 .foregroundStyle(Palette.muted)
@@ -567,6 +588,11 @@ private struct TransferRow: View {
         .padding(13)
         .background(.white, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Palette.line.opacity(0.6), lineWidth: 1))
+        .contextMenu {
+            if canDelete {
+                Button("删除记录（保留文件）", action: onDelete)
+            }
+        }
     }
 
     private var fileIcon: String {

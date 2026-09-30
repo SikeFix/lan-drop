@@ -31,6 +31,20 @@ final class AppModel: ObservableObject {
     private var retryTask: Task<Void, Never>?
     private var lifecycle = UUID()
 
+    var hasFinishedTransferRecords: Bool {
+        transfers.contains { $0.state == .completed || $0.state == .failed }
+    }
+
+    func removeTransferRecord(id: UUID) {
+        transfers.removeAll {
+            $0.id == id && ($0.state == .completed || $0.state == .failed)
+        }
+    }
+
+    func clearFinishedTransferRecords() {
+        transfers.removeAll { $0.state == .completed || $0.state == .failed }
+    }
+
     init() {
         let defaults = UserDefaults.standard
         let identifier = defaults.string(forKey: "deviceID").flatMap(UUID.init(uuidString:)) ?? UUID()
