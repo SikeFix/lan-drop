@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key><string>LanDrop</string>
+    <key>CFBundleIdentifier</key><string>com.sikefix.landrop</string>
+    <key>CFBundleName</key><string>局域快传</string>
+    <key>CFBundleDisplayName</key><string>局域快传</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSLocalNetworkUsageDescription</key><string>自动发现并连接使用相同密码的 Mac，在局域网中直接发送和接收文件。</string>
+    <key>NSBonjourServices</key><array><string>_landrop._tcp</string></array>
+    <key>NSDownloadsFolderUsageDescription</key><string>自动将接收的文件保存到下载文件夹中的「局域快传」。</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+</dict>
+</plist>
