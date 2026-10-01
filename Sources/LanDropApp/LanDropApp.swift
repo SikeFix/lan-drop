@@ -17,12 +17,23 @@ struct LanDropApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand(updater: model.updater)
+                Divider()
                 Button("打开局域快传") { appDelegate.showMainWindow() }
                     .keyboardShortcut("0", modifiers: .command)
                 Button("打开接收文件夹") { model.revealDownloads() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
             }
         }
+    }
+}
+
+private struct CheckForUpdatesCommand: View {
+    @ObservedObject var updater: UpdateController
+
+    var body: some View {
+        Button("检查更新…", action: updater.checkForUpdates)
+            .disabled(!updater.canCheckForUpdates)
     }
 }
 
@@ -45,10 +56,12 @@ private struct MainWindowContent: View {
 @MainActor
 final class LanDropAppDelegate: NSObject, NSApplicationDelegate {
     private weak var mainWindow: NSWindow?
+    private weak var appModel: AppModel?
     private var menuBarController: MenuBarController?
     private var openMainWindow: (() -> Void)?
 
     func configure(model: AppModel, openWindow: @escaping () -> Void) {
+        appModel = model
         openMainWindow = openWindow
         guard menuBarController == nil else { return }
         menuBarController = MenuBarController(model: model) { [weak self] in
@@ -75,6 +88,17 @@ final class LanDropAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model = appModel,
+              model.updater.isInstallingUpdate || model.updater.isWaitingToInstall else { return .terminateNow }
+        Task {
+            let allowed = await model.mayTerminateForUpdate()
+            if !allowed { model.updater.installationWasDeferred() }
+            sender.reply(toApplicationShouldTerminate: allowed)
+        }
+        return .terminateLater
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

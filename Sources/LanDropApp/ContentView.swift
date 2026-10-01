@@ -437,6 +437,8 @@ private struct TransferDashboard: View {
                 Text("关闭窗口后仍在菜单栏运行。")
                     .font(.system(size: 10))
                     .foregroundStyle(Palette.muted)
+                Rectangle().fill(Palette.line).frame(height: 1)
+                UpdateSettingsView(updater: model.updater)
             }
         }
         .padding(.horizontal, 22)
@@ -464,6 +466,10 @@ private struct TransferDashboard: View {
             Text(destinationText)
                 .font(.system(size: 12))
                 .foregroundStyle(Palette.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
                 .padding(.top, 9)
             HStack(spacing: 5) {
                 Image(systemName: "doc.on.doc")
@@ -488,7 +494,43 @@ private struct TransferDashboard: View {
 
     private var destinationText: String {
         if let peer = selectedPeer { return "自动发送至 \(peer.name)" }
-        return "另一台 Mac 连接后，待发送文件会自动传输"
+        return "设备连接后，文件会自动发送"
+    }
+}
+
+private struct UpdateSettingsView: View {
+    @ObservedObject var updater: UpdateController
+
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "开发版"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Text("版本 \(version)").font(.system(size: 10))
+                Spacer()
+                Button("检查更新…", action: updater.checkForUpdates)
+                    .font(.system(size: 10, weight: .medium))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(updater.canCheckForUpdates ? Palette.teal : Palette.muted)
+                    .disabled(!updater.canCheckForUpdates)
+            }
+            Toggle("自动更新", isOn: Binding(get: { updater.automaticUpdatesEnabled }, set: updater.setAutomaticUpdatesEnabled))
+                .font(.system(size: 11))
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .tint(Palette.teal)
+                .help("自动获取新版本，传输期间会等待。")
+            if !updater.statusText.isEmpty {
+                Text(updater.statusText)
+                    .font(.system(size: 10))
+                    .lineSpacing(3)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .foregroundStyle(Palette.muted)
     }
 }
 
@@ -538,6 +580,9 @@ private struct TransferRow: View {
                             Image(systemName: "exclamationmark.circle.fill")
                         }
                         Text(status)
+                        if transfer.state == .transferring, let speed = speedText {
+                            Text("· \(speed)")
+                        }
                     }
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(stateColor)
@@ -593,6 +638,14 @@ private struct TransferRow: View {
                 Button("删除记录（保留文件）", action: onDelete)
             }
         }
+    }
+
+    private var speedText: String? {
+        guard transfer.bytesPerSecond.isFinite, transfer.bytesPerSecond > 0 else { return nil }
+        if transfer.bytesPerSecond >= 1_000_000 {
+            return String(format: "%.1f MB/s", transfer.bytesPerSecond / 1_000_000)
+        }
+        return String(format: "%.0f KB/s", transfer.bytesPerSecond / 1_000)
     }
 
     private var fileIcon: String {

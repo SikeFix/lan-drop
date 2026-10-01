@@ -7,8 +7,8 @@
     <key>CFBundleName</key><string>局域快传</string>
     <key>CFBundleDisplayName</key><string>局域快传</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.0.1</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>1.1.0</string>
+    <key>CFBundleVersion</key><string>3</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>NSHighResolutionCapable</key><true/>
@@ -16,5 +16,14 @@
     <key>NSBonjourServices</key><array><string>_landrop._tcp</string></array>
     <key>NSDownloadsFolderUsageDescription</key><string>自动将接收的文件保存到下载文件夹中的「局域快传」。</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
+    <key>SUFeedURL</key><string>https://github.com/SikeFix/lan-drop/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key><string>8575mZqEUHqEDsePz6YPx+SZYkH94x+MjyL84pa+1co=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>14400</integer>
+    <key>SUEnableSystemProfiling</key><false/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SURequireSignedFeed</key><true/>
+    <key>SUSignedFeedFailureExpirationInterval</key><integer>0</integer>
 </dict>
 </plist>

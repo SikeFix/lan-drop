@@ -56,12 +56,17 @@ final class MenuBarController: NSObject {
 
     private func showMenu(event: NSEvent) {
         let menu = NSMenu()
+        menu.autoenablesItems = false
         let title = NSMenuItem(title: "局域快传", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
         menu.addItem(.separator())
         menu.addItem(menuItem("打开窗口", action: #selector(openWindow)))
         menu.addItem(menuItem("打开接收文件夹", action: #selector(openReceiveFolder)))
+        menu.addItem(.separator())
+        let checkUpdates = menuItem("检查更新…", action: #selector(checkForUpdates))
+        checkUpdates.isEnabled = model.updater.canCheckForUpdates
+        menu.addItem(checkUpdates)
         menu.addItem(.separator())
         menu.addItem(menuItem("退出局域快传", action: #selector(quitApp), key: "q"))
         NSMenu.popUpContextMenu(menu, with: event, for: dropView)
@@ -75,6 +80,7 @@ final class MenuBarController: NSObject {
 
     @objc private func openWindow() { showWindow() }
     @objc private func openReceiveFolder() { model.revealDownloads() }
+    @objc private func checkForUpdates() { model.updater.checkForUpdates() }
     @objc private func quitApp() { NSApp.terminate(nil) }
 }
 

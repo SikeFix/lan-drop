@@ -34,9 +34,11 @@ public final class LANService: @unchecked Sendable {
     public convenience init() { self.init(discoveryEnabled: true) }
 
     init(discoveryEnabled: Bool) {
-        var continuation: AsyncStream<LANEvent>.Continuation!
-        events = AsyncStream { continuation = $0 }
-        runtime = LANRuntime(events: continuation, discoveryEnabled: discoveryEnabled)
+        let queue = LANEventQueue()
+        events = AsyncStream(unfolding: { await queue.next() }, onCancel: {
+            Task { await queue.finish() }
+        })
+        runtime = LANRuntime(events: queue, discoveryEnabled: discoveryEnabled)
     }
 
     public func start(deviceID: UUID, name: String, password: String) async throws {
@@ -72,7 +74,7 @@ public final class LANService: @unchecked Sendable {
 
     deinit {
         let runtime = runtime
-        Task { await runtime.stop() }
+        Task { await runtime.finish() }
     }
 }
 
@@ -82,7 +84,7 @@ private actor LANRuntime {
         let identity: SessionIdentity
     }
 
-    private let events: AsyncStream<LANEvent>.Continuation
+    private let events: LANEventQueue
     private let discoveryEnabled: Bool
     private let queue = DispatchQueue(label: "LanDrop.discovery", qos: .userInitiated)
     private var listener: NWListener?
@@ -100,7 +102,7 @@ private actor LANRuntime {
 
     var listeningPort: UInt16? { listener?.port?.rawValue }
 
-    init(events: AsyncStream<LANEvent>.Continuation, discoveryEnabled: Bool) {
+    init(events: LANEventQueue, discoveryEnabled: Bool) {
         self.events = events
         self.discoveryEnabled = discoveryEnabled
     }
@@ -143,7 +145,7 @@ private actor LANRuntime {
             }
             guard generation == currentGeneration else { throw LANError.disconnected }
             if discoveryEnabled { startBrowser(generation: currentGeneration) }
-            events.yield(.status("正在查找使用相同密码的电脑…"))
+            await events.send(.status("正在查找使用相同密码的电脑…"))
         } catch {
             if generation == currentGeneration { await stop() }
             throw error
@@ -166,8 +168,14 @@ private actor LANRuntime {
         attempts.removeAll()
         retryDelays.removeAll()
         authenticationFailures.removeAll()
-        for id in oldPeers { events.yield(.peerDisconnected(id)) }
+        await events.discardBufferedEvents()
         for session in oldSessions { await session.close() }
+        for id in oldPeers { await events.send(.peerDisconnected(id)) }
+    }
+
+    func finish() async {
+        await stop()
+        await events.finish()
     }
 
     func send(_ packet: WirePacket, to peerID: UUID) async throws {
@@ -217,6 +225,7 @@ private actor LANRuntime {
     }
 
     private func beginConnection(endpoint: NWEndpoint, expectedPeerID: UUID?) {
+        guard sessions.count < 32 else { return }
         let parameters = LANProtocol.tcpParameters()
         let connection = NWConnection(to: endpoint, using: parameters)
         let session = ConnectionSession(connection: connection, initiator: true)
@@ -225,7 +234,7 @@ private actor LANRuntime {
     }
 
     private func accept(_ connection: NWConnection, generation: UUID) {
-        guard self.generation == generation, deviceID != nil else { connection.cancel(); return }
+        guard self.generation == generation, deviceID != nil, sessions.count < 32 else { connection.cancel(); return }
         let session = ConnectionSession(connection: connection, initiator: false)
         run(session, expectedPeerID: nil)
     }
@@ -245,7 +254,7 @@ private actor LANRuntime {
                 }
                 while !Task.isCancelled {
                     let packet = try await session.readPacket()
-                    await self.deliver(packet, from: identity.peer.id, sessionID: session.id, generation: currentGeneration)
+                    try await self.deliver(packet, from: identity.peer.id, sessionID: session.id, generation: currentGeneration)
                 }
             } catch {
                 await session.close()
@@ -264,7 +273,7 @@ private actor LANRuntime {
             await existing.session.close()
         } else {
             connected[identity.peer.id] = Connected(session: session, identity: identity)
-            events.yield(.peerConnected(identity.peer))
+            guard await events.send(.peerConnected(identity.peer)) else { return false }
         }
         if attempts[identity.peer.id] == session.id { attempts[identity.peer.id] = nil }
         retryDelays[identity.peer.id] = nil
@@ -272,23 +281,23 @@ private actor LANRuntime {
         return true
     }
 
-    private func deliver(_ packet: WirePacket, from peerID: UUID, sessionID: UUID, generation: UUID) {
-        guard self.generation == generation, connected[peerID]?.session.id == sessionID else { return }
-        events.yield(.packet(peerID, packet))
+    private func deliver(_ packet: WirePacket, from peerID: UUID, sessionID: UUID, generation: UUID) async throws {
+        guard self.generation == generation, connected[peerID]?.session.id == sessionID else { throw LANError.disconnected }
+        guard await events.send(.packet(peerID, packet)) else { throw LANError.disconnected }
     }
 
-    private func ended(sessionID: UUID, peerID: UUID?, expectedPeerID: UUID?, error: Error, generation: UUID) {
+    private func ended(sessionID: UUID, peerID: UUID?, expectedPeerID: UUID?, error: Error, generation: UUID) async {
         guard self.generation == generation else { return }
         sessions[sessionID] = nil
         if let expectedPeerID, attempts[expectedPeerID] == sessionID { attempts[expectedPeerID] = nil }
         if let peerID, connected[peerID]?.session.id == sessionID {
             connected[peerID] = nil
-            events.yield(.peerDisconnected(peerID))
+            await events.send(.peerDisconnected(peerID))
         }
         if let error = error as? LANError, case .authenticationFailed = error {
             let failureKey = expectedPeerID?.uuidString ?? "incoming"
             if authenticationFailures.insert(failureKey).inserted {
-                events.yield(.authenticationFailed(error.localizedDescription))
+                await events.send(.authenticationFailed(error.localizedDescription))
             }
         }
         if let reconnectID = expectedPeerID ?? peerID { scheduleReconnect(reconnectID, generation: generation) }
@@ -311,13 +320,13 @@ private actor LANRuntime {
         beginConnection(endpoint: endpoint, expectedPeerID: peerID)
     }
 
-    private func listenerFailed(_ message: String, generation: UUID) {
+    private func listenerFailed(_ message: String, generation: UUID) async {
         guard self.generation == generation else { return }
-        events.yield(.status("局域网监听失败：\(message)"))
+        await events.send(.status("局域网监听失败：\(message)"))
     }
 
-    private func browserFailed(_ message: String, generation: UUID) {
+    private func browserFailed(_ message: String, generation: UUID) async {
         guard self.generation == generation else { return }
-        events.yield(.status("发现电脑失败，请在系统设置中允许局域网访问：\(message)"))
+        await events.send(.status("发现电脑失败，请在系统设置中允许局域网访问：\(message)"))
     }
 }

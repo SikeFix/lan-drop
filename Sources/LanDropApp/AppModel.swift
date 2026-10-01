@@ -10,6 +10,7 @@ typealias TransferItem = TransferProgress
 
 @MainActor
 final class AppModel: ObservableObject {
+    let updater = UpdateController()
     @Published var isConfigured = false
     @Published var peers: [Peer] = []
     @Published var transfers: [TransferItem] = []
@@ -30,6 +31,20 @@ final class AppModel: ObservableObject {
     private var eventTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var lifecycle = UUID()
+    private var pendingSubmissions = 0
+
+    var hasPendingTransfers: Bool {
+        pendingSubmissions > 0 || transfers.contains { $0.state == .waiting || $0.state == .transferring }
+    }
+
+    func mayTerminateForUpdate() async -> Bool {
+        guard pendingSubmissions == 0 else { return false }
+        let checkedEngine = engine
+        if let checkedEngine, await checkedEngine.hasPendingTransfers() { return false }
+        // Actor state is authoritative: the UI history may lag behind progress.
+        // Recheck submissions and engine identity after crossing the actor boundary.
+        return pendingSubmissions == 0 && engine === checkedEngine
+    }
 
     var hasFinishedTransferRecords: Bool {
         transfers.contains { $0.state == .completed || $0.state == .failed }
@@ -56,6 +71,11 @@ final class AppModel: ObservableObject {
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads", isDirectory: true)
         receiveDirectory = downloads.appendingPathComponent("局域快传", isDirectory: true)
+        updater.hasPendingTransfers = { [weak self] in self?.hasPendingTransfers ?? false }
+        updater.pendingTransferCheck = { [weak self] in
+            guard let self else { return false }
+            return !(await self.mayTerminateForUpdate())
+        }
         do {
             if let password = try PairingKeychain.load() {
                 isConfigured = true
@@ -157,10 +177,15 @@ final class AppModel: ObservableObject {
             if progress.state == .completed, previous != .completed {
                 notifyCompletion(progress)
             }
+            updater.transferActivityDidChange()
         }
     }
 
     func receiveURLs(_ urls: [URL]) {
+        guard !updater.isInstallingUpdate else {
+            errorMessage = "正在安装新版，完成后即可继续拖入文件。"
+            return
+        }
         guard isConfigured else {
             errorMessage = "先输入一次配对密码，就可以开始拖放文件。"
             return
@@ -169,7 +194,13 @@ final class AppModel: ObservableObject {
             errorMessage = "局域网服务正在启动，请稍后拖入文件。"
             return
         }
-        Task { await engine?.enqueue(urls) }
+        pendingSubmissions += 1
+        updater.transferActivityDidChange()
+        Task {
+            await engine?.enqueue(urls)
+            pendingSubmissions -= 1
+            updater.transferActivityDidChange()
+        }
     }
 
     func chooseFiles() {
@@ -210,6 +241,7 @@ final class AppModel: ObservableObject {
             transfers = []
             errorMessage = nil
             statusText = "输入一次密码，之后直接拖放"
+            updater.transferActivityDidChange()
         } catch { errorMessage = error.localizedDescription }
     }
 

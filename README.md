@@ -1,6 +1,6 @@
 # 局域快传 · LanDrop
 
-A native macOS app for encrypted LAN file sharing. Pair once with a shared password, then drag files into the window or menu bar to send. No cloud server or manual IP configuration.
+A native macOS app for encrypted LAN file sharing. Pair once with a shared password, then drag files into the window or menu bar to send. Bounded streaming and automatic signed updates from GitHub Releases.
 
 原生 macOS 局域网文件传输应用。两台 Mac 各输入一次相同密码，之后自动发现、配对、重连和接收。把文件拖到窗口或菜单栏的双箭头图标，松手即可发送。
 
@@ -25,6 +25,8 @@ A native macOS app for encrypted LAN file sharing. Pair once with a shared passw
 
 完成或失败的传输记录可以点击垃圾桶图标单条删除，也可以点击「清空已结束记录」批量清理。只移除记录，接收的文件会保留；等待发送或正在传输的任务不会被清空。
 
+从 v1.1.0 开始，默认自动检查并下载 GitHub 新版本，等待传输和发送队列完成后安装并重新打开。可以在应用中手动「检查更新」或关闭自动更新。旧版 v1.0.x 需要先手动安装一次新版，已有配对密码会保留。更新目录和安装包均经过 Ed25519 签名验证。
+
 <details>
 <summary>查看首次配对界面</summary>
 
@@ -42,7 +44,7 @@ cd lan-drop
 ./scripts/build-app.sh
 ```
 
-默认生成同时支持 Apple 芯片和 Intel 的通用应用及 ZIP 包。仅构建本机版本使用 `./scripts/build-app.sh --native`。开发运行使用 `swift run LanDrop`；登录启动、通知和系统权限请在打包后的 `.app` 中验证。
+默认生成同时支持 Apple 芯片和 Intel 的通用应用及 ZIP 包，首次构建会下载锁定版本的 Sparkle。仅构建本机版本使用 `./scripts/build-app.sh --native`。开发运行使用 `swift run LanDrop`；自动更新、登录启动、通知和系统权限请在打包后的 `.app` 中验证。
 
 ```sh
 swift test
@@ -55,14 +57,15 @@ swift test
 - SwiftUI / AppKit 原生界面和菜单栏拖放。
 - Network.framework Bonjour 自动发现，无需输入 IP，文件不经过互联网服务器。
 - 配对密码保存在 macOS 钥匙串。PBKDF2、临时 Curve25519 密钥交换、HMAC 身份认证和 AES-GCM 会话加密。
-- 分块流式传输，每块接收确认后继续，避免大文件一次载入内存。
+- 1 MiB 分块和最多 8 MiB 在途窗口，接收端返回累计确认，连续发送减少等待；接收事件队列也有上限，内存不随文件大小增长。
 - 完整大小和 SHA-256 校验通过后才显示接收完成。接收失败清理临时文件，同名文件自动编号，不覆盖已有文件。
+- [Sparkle 2](https://sparkle-project.org/) 自动更新，GitHub Releases 分发，签名私钥仅保存在维护者 macOS 钥匙串。发布方法见 [自动更新与发布](docs/UPDATES.md)。
 
 当前不支持中断续传：发送中的连接断开时会报告失败，需要重新拖入；等待发送的队列仍会自动等待重连。队列和历史仅保留在本次应用运行期间。
 
 ## 验证与贡献
 
-本机通过 23 项测试，包含真实 Bonjour 自动发现与重连、TCP 双向传输、离线排队、加密校验、同名文件和路径安全。当前仍需要不同 Mac 之间的实机联测。部分受限运行环境会跳过无局域网权限的 Bonjour 测试。
+测试覆盖真实 Bonjour 自动发现与重连、TCP 双向传输、离线排队、加密校验、同名文件和路径安全，以及发送窗口、异常确认、超时、断连和旧协议兼容。部分受限运行环境会跳过无局域网权限的 Bonjour 测试。可重复的性能基准见 [传输性能](docs/PERFORMANCE.md)。
 
 欢迎提交 Issue 和 Pull Request。修改传输或文件处理逻辑后，请运行 `swift test`；修改界面后，请运行 `./scripts/build-app.sh --native` 并检查实际拖放效果。GitHub Actions 会执行测试并构建通用应用。
 

@@ -20,14 +20,30 @@ mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp "$binary_dir/LanDrop" "$app_dir/Contents/MacOS/LanDrop"
 cp "$root_dir/Resources/Info.plist" "$app_dir/Contents/Info.plist"
 cp "$root_dir/LICENSE" "$app_dir/Contents/Resources/LICENSE"
+sparkle_artifact="$root_dir/.build/artifacts/sparkle/Sparkle"
+sparkle_framework="$sparkle_artifact/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ ! -d "$sparkle_framework" ]]; then
+    printf '找不到 Sparkle.framework，请先运行 swift package resolve。\n' >&2
+    exit 1
+fi
+mkdir -p "$app_dir/Contents/Frameworks"
+ditto "$sparkle_framework" "$app_dir/Contents/Frameworks/Sparkle.framework"
+cp "$sparkle_artifact/LICENSE" "$app_dir/Contents/Resources/Sparkle-LICENSE"
 xcrun swift "$root_dir/scripts/make-icon.swift" "$root_dir/build/AppIcon.iconset"
 iconutil -c icns "$root_dir/build/AppIcon.iconset" -o "$app_dir/Contents/Resources/AppIcon.icns"
 sign_identity="${LANDROP_SIGN_IDENTITY:--}"
-if [[ "$sign_identity" == "-" ]]; then
-    codesign --force --sign - "$app_dir"
-else
-    codesign --force --options runtime --timestamp --sign "$sign_identity" "$app_dir"
+sign_args=(--force --sign "$sign_identity")
+if [[ "$sign_identity" != "-" ]]; then
+    sign_args+=(--options runtime --timestamp)
 fi
-codesign --verify --strict "$app_dir"
+# Sparkle's XPC services must share the host application's signing identity.
+embedded_sparkle="$app_dir/Contents/Frameworks/Sparkle.framework/Versions/B"
+codesign "${sign_args[@]}" "$embedded_sparkle/XPCServices/Installer.xpc"
+codesign "${sign_args[@]}" "$embedded_sparkle/XPCServices/Downloader.xpc"
+codesign "${sign_args[@]}" "$embedded_sparkle/Autoupdate"
+codesign "${sign_args[@]}" "$embedded_sparkle/Updater.app"
+codesign "${sign_args[@]}" "$app_dir/Contents/Frameworks/Sparkle.framework"
+codesign "${sign_args[@]}" "$app_dir"
+codesign --verify --deep --strict "$app_dir"
 ditto -c -k --sequesterRsrc --keepParent "$app_dir" "$output_dir/局域快传.zip"
 printf '已生成：%s\n' "$app_dir" "$output_dir/局域快传.zip"

@@ -24,6 +24,8 @@ jobs:
         run: swift --version
       - name: Test transfer, encryption, and file handling
         run: swift test
+      - name: Verify signed update feed and archive rejection
+        run: xcrun swift scripts/test-update-signatures.swift
       - name: Build Apple silicon and Intel app
         run: ./scripts/build-app.sh
       - name: Upload app archive
